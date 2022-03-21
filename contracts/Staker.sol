@@ -72,4 +72,24 @@ contract Staker is Ownable {
             rewardPerSecond = 0;
         }
     }
+
+    // Will deposit specified amount and also send rewards.
+    // User should have approved ERC20 before.
+    function deposit(uint256 _amount) external {
+        UserInfo storage user = users[msg.sender];
+        updateRewards();
+        // Send reward for previous deposits
+        if (user.deposited > 0) {
+            uint256 pending = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7 - user.rewardsAlreadyConsidered;
+            require(rewardToken.transfer(msg.sender, pending), "Staker: transfer failed");
+            emit ClaimReward(msg.sender, pending);
+        }
+        user.deposited = user.deposited + _amount;
+        totalStaked = totalStaked + _amount;
+        user.rewardsAlreadyConsidered = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7;
+
+        require(depositToken.transferFrom(msg.sender, address(this), _amount), "Staker: transferFrom failed");
+        emit Deposit(msg.sender, _amount);
+    }
+
 }

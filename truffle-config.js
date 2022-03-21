@@ -79,6 +79,12 @@ module.exports = {
       network_id: 97,
       skipDryRun: true,
     },
+
+    test: {
+      host: "127.0.0.1",
+      port: 7545,
+      network_id: "*"
+    }
   },
 
   // Set default mocha options here, use special reporters etc.

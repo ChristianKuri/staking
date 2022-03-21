@@ -5,15 +5,21 @@ const timeMachine = require('ganache-time-traveler');
 
 contract('staker', async accounts => {
   let stakerContract;
+  let depositToken;
+  let rewardToken;
 
   beforeEach(async () => {
     const factoryContract = await ERC20Factory.new()
 
     await factoryContract.createToken("LP BT-BNB", "LPToken"); // Deposit token
     await factoryContract.createToken("Basic Token", "BT");  // Reward token
-    const [depositToken, rewardToken] = await factoryContract.getTokens();
+    const [depositTokenAddr, rewardTokenAddr] = await factoryContract.getTokens();
+    depositToken = await MockERC20.at(depositTokenAddr);
+    rewardToken = await MockERC20.at(rewardTokenAddr);
+    await depositToken.mint(accounts[1], web3.utils.toWei("1000000"));
+    await depositToken.mint(accounts[2], web3.utils.toWei("1000000"));
 
-    stakerContract = await Staker.new(depositToken, rewardToken);
+    stakerContract = await Staker.new(depositTokenAddr, rewardTokenAddr);
 
 
     let snapshot = await timeMachine.takeSnapshot();
@@ -28,17 +34,15 @@ contract('staker', async accounts => {
     return (await web3.eth.getBlock((await web3.eth.getBlockNumber())))["timestamp"];
   }
 
+  let defaultOptions = { from: accounts[0] };
   let BN = web3.utils.BN;
   let secondsInDayBN = new BN(24).mul(new BN(60)).mul(new BN(60));
   let rpsMultiplierBN = new BN(10 ** 7);
 
-  it.only("should calculate the parameters correctly", async () => {
-    const rewardTokenAddr = await stakerContract.rewardToken();
-
+  it("should calculate the parameters correctly", async () => {
     let rewardAmount = web3.utils.toWei("300");
     let days = 30;
 
-    const rewardToken = await MockERC20.at(rewardTokenAddr);
     await rewardToken.approve(stakerContract.address, rewardAmount);
 
     // Add staking rewards
@@ -55,4 +59,16 @@ contract('staker', async accounts => {
     let expectedEndTime = await (new BN(startingTime).add(new BN(days).mul(secondsInDayBN)));
     assert.equal(contractEndTime.toString(), expectedEndTime.toString(), "Wrong contract end time");
   });
+
+  it.only("allows to deposit", async () => {
+    const depositAmount = web3.utils.toWei("10");
+    await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] });
+    await stakerContract.deposit(depositAmount, { from: accounts[1] });
+
+    const userDetails = await stakerContract.users(accounts[1]);
+
+    assert.equal(userDetails[0].toString(), depositAmount, "Wrong deposit amount");
+  })
+
+
 })
