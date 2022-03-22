@@ -7,6 +7,7 @@ contract('staker', async (accounts) => {
   let stakerContract
   let depositToken
   let rewardToken
+  let snapShotId
 
   let defaultOptions = { from: accounts[0] }
   let BN = web3.utils.BN
@@ -15,6 +16,17 @@ contract('staker', async (accounts) => {
 
   async function getTime() {
     return (await web3.eth.getBlock(await web3.eth.getBlockNumber()))['timestamp']
+  }
+
+  function assertEqualWithMargin(_num1, _num2, _margin, _message) {
+    if (
+      BN.max(_num1, _num2)
+        .sub(BN.min(_num1, _num2))
+        .lte(_margin.mul(new BN(3)))
+    )
+      return
+
+    assert.equal(_num1.toString(), _num2.toString(), _message)
   }
 
   beforeEach(async () => {
@@ -82,7 +94,7 @@ contract('staker', async (accounts) => {
     assert.equal(userDetails[0].toString(), web3.utils.toWei('5'), 'Wrong deposit amount')
   })
 
-  it.only('allows to add rewards', async () => {
+  it('allows to add rewards', async () => {
     const rewardAmount = web3.utils.toWei('300')
     const days = 30
 
@@ -96,4 +108,47 @@ contract('staker', async (accounts) => {
     assert.equal(contractRps.toString(), expectedReward.toString(), 'Wrong rewards per second')
   })
 
+  it.only('allows to claim rewards', async () => {
+    const rewardAmount = web3.utils.toWei('300')
+    const days = 30
+
+    // Add staking rewards
+    await rewardToken.approve(stakerContract.address, rewardAmount, defaultOptions)
+    await stakerContract.addRewards(rewardAmount, days, defaultOptions)
+
+    // User deposit funds
+    const depositAmount = web3.utils.toWei('10')
+    await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
+    await stakerContract.deposit(depositAmount, { from: accounts[1] })
+    const contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
+
+    // Verify user reward balance is 0
+    let initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    assert.equal(initialReward.toString(), 0, 'User has rewards pending straight after staking')
+
+    // Advance time by 1 hour, make sure reward calculation is correct in pendingRewards() view function
+    let twoHours = 60 * 60 * 2
+    await timeMachine.advanceTimeAndBlock(twoHours)
+
+    // Verify user reward balance is correct
+    let contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    let expectedPendingReward = contractRps.mul(new BN(twoHours)).div(rpsMultiplierBN)
+    console.log(contractPendingReward.toString(), expectedPendingReward.toString())
+    assertEqualWithMargin(
+      contractPendingReward,
+      expectedPendingReward,
+      contractRps.div(rpsMultiplierBN),
+      'Wrong pending rewards (view) calculation',
+    )
+
+    // Claim rewards
+    await stakerContract.claim({ from: accounts[1] })
+    let userNewRewardBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    assertEqualWithMargin(
+      userNewRewardBalance,
+      expectedPendingReward,
+      contractRps.div(rpsMultiplierBN),
+      'Wrong amount of rewards sent to user after claim()',
+    )
+  })
 })

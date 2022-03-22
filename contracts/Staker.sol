@@ -113,4 +113,35 @@ contract Staker is Ownable {
         require(rewardToken.transfer(msg.sender, pending), "Staker: reward transfer failed");
         emit ClaimReward(msg.sender, pending);
     }
+
+    // Will just send rewards.
+    function claim() external {
+        UserInfo storage user = users[msg.sender];
+        if (user.deposited == 0) return;
+
+        updateRewards();
+        uint256 pending = (user.deposited * (accumulatedRewardPerShare)) / (1e12) / (1e7) - (user.rewardsAlreadyConsidered);
+        require(rewardToken.transfer(msg.sender, pending), "Staker: transfer failed");
+        emit ClaimReward(msg.sender, pending);
+        user.rewardsAlreadyConsidered = (user.deposited * (accumulatedRewardPerShare)) / (1e12) / (1e7);
+    }
+
+    // Return the user's pending rewards.
+    function pendingRewards(address _user) public view returns (uint256) {
+        UserInfo storage user = users[_user];
+        uint256 accumulated = accumulatedRewardPerShare;
+        if (block.timestamp > lastRewardTimestamp && lastRewardTimestamp <= rewardPeriodEndTimestamp && totalStaked != 0) {
+            uint256 endingTime;
+            if (block.timestamp > rewardPeriodEndTimestamp) {
+                endingTime = rewardPeriodEndTimestamp;
+            } else {
+                endingTime = block.timestamp;
+            }
+            uint256 secondsSinceLastRewardUpdate = endingTime - (lastRewardTimestamp);
+            uint256 totalNewReward = secondsSinceLastRewardUpdate * (rewardPerSecond);
+            accumulated = accumulated + ((totalNewReward * (1e12)) / (totalStaked));
+        }
+        return (user.deposited * (accumulated)) / (1e12) / (1e7) - (user.rewardsAlreadyConsidered);
+    }
+
 }
