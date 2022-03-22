@@ -144,4 +144,13 @@ contract Staker is Ownable {
         return (user.deposited * (accumulated)) / (1e12) / (1e7) - (user.rewardsAlreadyConsidered);
     }
 
+    // Will collect depositTokens (LP tokens) that were sent to the contract outside of the staking mechanism.
+    function skim() external onlyOwner {
+        uint256 depositTokenBalance = depositToken.balanceOf(address(this));
+        if (depositTokenBalance > totalStaked) {
+            uint256 amount = depositTokenBalance - (totalStaked);
+            require(depositToken.transfer(msg.sender, amount), "Staker: transfer failed");
+            emit Skim(amount);
+        }
+    }
 }

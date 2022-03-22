@@ -151,4 +151,22 @@ contract('staker', async (accounts) => {
       'Wrong amount of rewards sent to user after claim()',
     )
   })
+
+  it.only('allows to collect LP Tokens that were sent to the contract outside of the staking mechanism', async () => {
+    // User transfer LP Tokens to the contract
+    const depositAmount = web3.utils.toWei('10')
+    await depositToken.transfer(stakerContract.address, depositAmount, { from: accounts[1] })
+
+    // Verify user LP balance is 0
+    const userDetails = await stakerContract.users(accounts[1])
+    assert.equal(userDetails[0].toString(), 0, 'Wrong deposit amount')
+
+    // Collect the LP Tokens
+    const initialLPBalance = await depositToken.balanceOf(accounts[0])
+    await stakerContract.skim()
+    const finalLPBalance = await depositToken.balanceOf(accounts[0])
+
+    assert.equal(finalLPBalance.toString(), new BN(initialLPBalance).add(new BN(depositAmount)).toString(), 'Wrong LP balance after skim')
+  })
+
 })
