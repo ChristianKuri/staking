@@ -8,6 +8,15 @@ contract('staker', async accounts => {
   let depositToken;
   let rewardToken;
 
+  let defaultOptions = { from: accounts[0] };
+  let BN = web3.utils.BN;
+  let secondsInDayBN = new BN(24).mul(new BN(60)).mul(new BN(60));
+  let rpsMultiplierBN = new BN(10 ** 7);
+
+  async function getTime() {
+    return (await web3.eth.getBlock((await web3.eth.getBlockNumber())))["timestamp"];
+  }
+
   beforeEach(async () => {
     const factoryContract = await ERC20Factory.new()
 
@@ -29,15 +38,6 @@ contract('staker', async accounts => {
   afterEach(async () => {
     await timeMachine.revertToSnapshot(snapshotId);
   });
-
-  async function getTime() {
-    return (await web3.eth.getBlock((await web3.eth.getBlockNumber())))["timestamp"];
-  }
-
-  let defaultOptions = { from: accounts[0] };
-  let BN = web3.utils.BN;
-  let secondsInDayBN = new BN(24).mul(new BN(60)).mul(new BN(60));
-  let rpsMultiplierBN = new BN(10 ** 7);
 
   it("should calculate the parameters correctly", async () => {
     let rewardAmount = web3.utils.toWei("300");
@@ -70,7 +70,7 @@ contract('staker', async accounts => {
     assert.equal(userDetails[0].toString(), depositAmount, "Wrong deposit amount");
   });
 
-  it.only("allows to withdraw", async () => {
+  it("allows to withdraw", async () => {
     const depositAmount = web3.utils.toWei("10");
     const withdrawAmount = web3.utils.toWei("5");
 
@@ -83,6 +83,18 @@ contract('staker', async accounts => {
     assert.equal(userDetails[0].toString(), web3.utils.toWei("5"), "Wrong deposit amount");
   });
 
+  it.only('allows to add rewards', async () => {
+    const rewardAmount = web3.utils.toWei("300");
+    const days = 30;
 
+    // Add staking rewards
+    await rewardToken.approve(stakerContract.address, rewardAmount, defaultOptions);
+    await stakerContract.addRewards(rewardAmount, days, defaultOptions);
+
+    const contractRps = await stakerContract.rewardPerSecond.call(defaultOptions);
+    const expectedReward = await new BN(rewardAmount).mul(rpsMultiplierBN).div(new BN(days)).div(secondsInDayBN);
+
+    assert.equal(contractRps.toString(), expectedReward.toString(), "Wrong rewards per second");
+  })
 
 })
