@@ -7,12 +7,11 @@ contract('staker', async (accounts) => {
   let stakerContract
   let depositToken
   let rewardToken
-  let snapShotId
 
-  let defaultOptions = { from: accounts[0] }
-  let BN = web3.utils.BN
-  let secondsInDayBN = new BN(24).mul(new BN(60)).mul(new BN(60))
-  let rpsMultiplierBN = new BN(10 ** 7)
+  const defaultOptions = { from: accounts[0] }
+  const BN = web3.utils.BN
+  const secondsInDayBN = new BN(24).mul(new BN(60)).mul(new BN(60))
+  const rpsMultiplierBN = new BN(10 ** 7)
 
   async function getTime() {
     return (await web3.eth.getBlock(await web3.eth.getBlockNumber()))['timestamp']
@@ -51,22 +50,22 @@ contract('staker', async (accounts) => {
   })
 
   it('should calculate the parameters correctly', async () => {
-    let rewardAmount = web3.utils.toWei('300')
-    let days = 30
+    const rewardAmount = web3.utils.toWei('300')
+    const days = 30
 
     // Add staking rewards
     await rewardToken.approve(stakerContract.address, rewardAmount)
     await stakerContract.addRewards(rewardAmount, days)
-    let startingTime = await getTime()
+    const startingTime = await getTime()
 
     // Verify rewards-per-second calculation is correct
-    let contractRps = await stakerContract.rewardPerSecond()
-    let expectedRps = await new BN(rewardAmount).mul(rpsMultiplierBN).div(new BN(days)).div(secondsInDayBN)
+    const contractRps = await stakerContract.rewardPerSecond()
+    const expectedRps = await new BN(rewardAmount).mul(rpsMultiplierBN).div(new BN(days)).div(secondsInDayBN)
     assert.equal(contractRps.toString(), expectedRps.toString(), 'Wrong rewards per second')
 
     // Verify staking campaign end time calculation is correct
-    let contractEndTime = await stakerContract.rewardPeriodEndTimestamp()
-    let expectedEndTime = await new BN(startingTime).add(new BN(days).mul(secondsInDayBN))
+    const contractEndTime = await stakerContract.rewardPeriodEndTimestamp()
+    const expectedEndTime = await new BN(startingTime).add(new BN(days).mul(secondsInDayBN))
     assert.equal(contractEndTime.toString(), expectedEndTime.toString(), 'Wrong contract end time')
   })
 
@@ -125,16 +124,16 @@ contract('staker', async (accounts) => {
     const contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
 
     // Verify user reward balance is 0
-    let initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    const initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
     assert.equal(initialReward.toString(), 0, 'User has rewards pending straight after staking')
 
     // Advance time by 2 hours, make sure reward calculation is correct in pendingRewards() view function
-    let twoHours = 60 * 60 * 2
+    const twoHours = 60 * 60 * 2
     await timeMachine.advanceTimeAndBlock(twoHours)
 
     // Verify user reward balance is correct
-    let contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
-    let expectedPendingReward = contractRps.mul(new BN(twoHours)).div(rpsMultiplierBN)
+    const contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    const expectedPendingReward = contractRps.mul(new BN(twoHours)).div(rpsMultiplierBN)
     assertEqualWithMargin(
       contractPendingReward,
       expectedPendingReward,
@@ -144,7 +143,7 @@ contract('staker', async (accounts) => {
 
     // Claim rewards
     await stakerContract.claim({ from: accounts[1] })
-    let userNewRewardBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    const userNewRewardBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
     assertEqualWithMargin(
       userNewRewardBalance,
       expectedPendingReward,
@@ -170,9 +169,9 @@ contract('staker', async (accounts) => {
     assert.equal(finalLPBalance.toString(), new BN(initialLPBalance).add(new BN(depositAmount)).toString(), 'Wrong LP balance after skim')
   })
 
-  it.only('should calculate and distribute rewards correctly to one person across multiple campaigns and multiple actions', async () => {
-    let rewardAmount = web3.utils.toWei('300')
-    let days = 30
+  it('should calculate and distribute rewards correctly to one person across multiple campaigns and multiple actions', async () => {
+    const rewardAmount = web3.utils.toWei('300')
+    const days = 30
 
     // Store initial LP and reward balance
     let prevUserRewardTokenBalance = await rewardToken.balanceOf.call(accounts[1], { from: accounts[1] })
@@ -182,13 +181,13 @@ contract('staker', async (accounts) => {
     await rewardToken.approve(stakerContract.address, rewardAmount, defaultOptions)
     await stakerContract.addRewards(rewardAmount, days, defaultOptions)
     let prevContractRewardTokenBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
-    let contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
+    const contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
 
     // User deposit funds
-    let depositAmount = web3.utils.toWei('10')
+    const depositAmount = web3.utils.toWei('10')
     await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
     await stakerContract.deposit(depositAmount, { from: accounts[1] })
-    let initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    const initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
     assert.equal(initialReward.toString(), 0, 'User has rewards pending straight after staking')
 
     // Advance time by 10 days
@@ -216,8 +215,8 @@ contract('staker', async (accounts) => {
     )
 
     // Check contract rewards balance *
-    let contractNewRewardBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
-    let contractDelta = prevContractRewardTokenBalance.sub(contractNewRewardBalance)
+    const contractNewRewardBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
+    const contractDelta = prevContractRewardTokenBalance.sub(contractNewRewardBalance)
     assert.equal(contractDelta.toString(), expectedPendingReward.toString(), 'Contract lost different amount of rewards than should have')
     prevContractRewardTokenBalance = contractNewRewardBalance
 
@@ -226,7 +225,7 @@ contract('staker', async (accounts) => {
     prevUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
 
     // Check user deposit balance
-    let userNewDepositBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
+    const userNewDepositBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
     assert.equal(
       userNewDepositBalance.toString(),
       prevUserDepositTokenBalance.toString(),
@@ -256,20 +255,20 @@ contract('staker', async (accounts) => {
     await timeMachine.advanceTimeAndBlock(secsToAdvance)
 
     // Add new rewards
-    let newRewardAmount = web3.utils.toWei('10')
-    let newDays = 6
+    const newRewardAmount = web3.utils.toWei('10')
+    const newDays = 6
     await rewardToken.approve(stakerContract.address, newRewardAmount, defaultOptions)
     await stakerContract.addRewards(newRewardAmount, newDays, defaultOptions)
 
     // Advance time by 3 days
-    let newSecsToAdvance = 60 * 60 * 24 * 3
+    const newSecsToAdvance = 60 * 60 * 24 * 3
     await timeMachine.advanceTimeAndBlock(newSecsToAdvance)
 
     // Get contract rewards per second
-    let newContractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
+    const newContractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
 
     // Make sure reward calculation is correct in pendingRewards() view function
-    let expectedTotalReward = contractRps
+    const expectedTotalReward = contractRps
       .mul(new BN(60 * 60 * 24 * 5))
       .div(rpsMultiplierBN)
       .add(newContractRps.mul(new BN(newSecsToAdvance)).div(rpsMultiplierBN))
@@ -286,12 +285,12 @@ contract('staker', async (accounts) => {
     prevUserDepositTokenBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
 
     // Withdraw LP and rewards
-    let withdrawAmount = new BN(depositAmount).div(new BN(2))
+    const withdrawAmount = new BN(depositAmount).div(new BN(2))
     await stakerContract.withdraw(withdrawAmount.toString(), { from: accounts[1] })
 
     // Store final LP and reward balance
-    let newUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
-    let newUserDepositTokenBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
+    const newUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    const newUserDepositTokenBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
 
     // Verify that LP and reward balances are correct
     assertEqualWithMargin(
