@@ -78,12 +78,11 @@ contract Staker is Ownable {
     function deposit(uint256 _amount) external {
         UserInfo storage user = users[msg.sender];
         updateRewards();
-        // Send reward for previous deposits
         if (user.deposited > 0) {
-            uint256 pending = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7 - user.rewardsAlreadyConsidered;
-            require(rewardToken.transfer(msg.sender, pending), "Staker: transfer failed");
-            emit ClaimReward(msg.sender, pending);
+            sendRewardForPreviousDeposits();
         }
+
+        // Update user info
         user.deposited = user.deposited + _amount;
         totalStaked = totalStaked + _amount;
         user.rewardsAlreadyConsidered = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7;
@@ -92,4 +91,26 @@ contract Staker is Ownable {
         emit Deposit(msg.sender, _amount);
     }
 
+    // Will withdraw the specified amount and also send rewards.
+    function withdraw(uint256 _amount) external {
+        UserInfo storage user = users[msg.sender];
+        require(user.deposited >= _amount, "Staker: balance not enough");
+        updateRewards();
+        sendRewardForPreviousDeposits();
+
+        // Update user info
+        user.deposited = user.deposited - _amount;
+        totalStaked = totalStaked - _amount;
+        user.rewardsAlreadyConsidered = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7;
+
+        require(depositToken.transfer(msg.sender, _amount), "Staker: deposit withdrawal failed");
+        emit Withdraw(msg.sender, _amount);
+    }
+
+    function sendRewardForPreviousDeposits() internal {
+        UserInfo storage user = users[msg.sender];
+        uint256 pending = (user.deposited * accumulatedRewardPerShare) / 1e12 / 1e7 - user.rewardsAlreadyConsidered;
+        require(rewardToken.transfer(msg.sender, pending), "Staker: reward transfer failed");
+        emit ClaimReward(msg.sender, pending);
+    }
 }

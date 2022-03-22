@@ -60,7 +60,7 @@ contract('staker', async accounts => {
     assert.equal(contractEndTime.toString(), expectedEndTime.toString(), "Wrong contract end time");
   });
 
-  it.only("allows to deposit", async () => {
+  it("allows to deposit", async () => {
     const depositAmount = web3.utils.toWei("10");
     await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] });
     await stakerContract.deposit(depositAmount, { from: accounts[1] });
@@ -68,7 +68,21 @@ contract('staker', async accounts => {
     const userDetails = await stakerContract.users(accounts[1]);
 
     assert.equal(userDetails[0].toString(), depositAmount, "Wrong deposit amount");
-  })
+  });
+
+  it.only("allows to withdraw", async () => {
+    const depositAmount = web3.utils.toWei("10");
+    const withdrawAmount = web3.utils.toWei("5");
+
+    await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] });
+    await stakerContract.deposit(depositAmount, { from: accounts[1] });
+    await stakerContract.withdraw(withdrawAmount, { from: accounts[1] });
+
+    const userDetails = await stakerContract.users(accounts[1]);
+
+    assert.equal(userDetails[0].toString(), web3.utils.toWei("5"), "Wrong deposit amount");
+  });
+
 
 
 })
