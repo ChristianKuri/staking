@@ -48,15 +48,6 @@ contract('staker', async (accounts) => {
 
     // Deploy the staker contract
     stakerContract = await Staker.new(depositTokenAddr, rewardTokenAddr)
-
-    // Make a snapshot of the blockchain
-    let snapshot = await timeMachine.takeSnapshot()
-    snapshotId = snapshot['result']
-  })
-
-  afterEach(async () => {
-    // Revert the blockchain to the previous snapshot
-    await timeMachine.revertToSnapshot(snapshotId)
   })
 
   it('should calculate the parameters correctly', async () => {
@@ -137,14 +128,13 @@ contract('staker', async (accounts) => {
     let initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
     assert.equal(initialReward.toString(), 0, 'User has rewards pending straight after staking')
 
-    // Advance time by 1 hour, make sure reward calculation is correct in pendingRewards() view function
+    // Advance time by 2 hours, make sure reward calculation is correct in pendingRewards() view function
     let twoHours = 60 * 60 * 2
     await timeMachine.advanceTimeAndBlock(twoHours)
 
     // Verify user reward balance is correct
     let contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
     let expectedPendingReward = contractRps.mul(new BN(twoHours)).div(rpsMultiplierBN)
-    console.log(contractPendingReward.toString(), expectedPendingReward.toString())
     assertEqualWithMargin(
       contractPendingReward,
       expectedPendingReward,
@@ -163,7 +153,7 @@ contract('staker', async (accounts) => {
     )
   })
 
-  it.only('allows to collect LP Tokens that were sent to the contract outside of the staking mechanism', async () => {
+  it('allows to collect LP Tokens that were sent to the contract outside of the staking mechanism', async () => {
     // User transfer LP Tokens to the contract
     const depositAmount = web3.utils.toWei('10')
     await depositToken.transfer(stakerContract.address, depositAmount, { from: accounts[1] })
@@ -180,4 +170,141 @@ contract('staker', async (accounts) => {
     assert.equal(finalLPBalance.toString(), new BN(initialLPBalance).add(new BN(depositAmount)).toString(), 'Wrong LP balance after skim')
   })
 
+  it.only('should calculate and distribute rewards correctly to one person across multiple campaigns and multiple actions', async () => {
+    let rewardAmount = web3.utils.toWei('300')
+    let days = 30
+
+    // Store initial LP and reward balance
+    let prevUserRewardTokenBalance = await rewardToken.balanceOf.call(accounts[1], { from: accounts[1] })
+    let prevUserDepositTokenBalance = await depositToken.balanceOf.call(accounts[1], { from: accounts[1] })
+
+    // Add staking rewards
+    await rewardToken.approve(stakerContract.address, rewardAmount, defaultOptions)
+    await stakerContract.addRewards(rewardAmount, days, defaultOptions)
+    let prevContractRewardTokenBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
+    let contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
+
+    // User deposit funds
+    let depositAmount = web3.utils.toWei('10')
+    await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
+    await stakerContract.deposit(depositAmount, { from: accounts[1] })
+    let initialReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    assert.equal(initialReward.toString(), 0, 'User has rewards pending straight after staking')
+
+    // Advance time by 10 days
+    let secsToAdvance = 60 * 60 * 24 * 10
+    await timeMachine.advanceTimeAndBlock(secsToAdvance)
+
+    // Make sure reward calculation is correct in pendingRewards() view function
+    let contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    let expectedPendingReward = new BN(contractRps).mul(new BN(secsToAdvance)).div(rpsMultiplierBN)
+    assertEqualWithMargin(
+      contractPendingReward,
+      expectedPendingReward,
+      contractRps.div(rpsMultiplierBN),
+      'Wrong pending rewards (view) calculation',
+    )
+
+    // Claim rewards
+    await stakerContract.claim({ from: accounts[1] })
+    let userNewRewardBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    assertEqualWithMargin(
+      userNewRewardBalance,
+      expectedPendingReward,
+      contractRps.div(rpsMultiplierBN),
+      'Wrong amount of rewards sent to user after claim()',
+    )
+
+    // Check contract rewards balance *
+    let contractNewRewardBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
+    let contractDelta = prevContractRewardTokenBalance.sub(contractNewRewardBalance)
+    assert.equal(contractDelta.toString(), expectedPendingReward.toString(), 'Contract lost different amount of rewards than should have')
+    prevContractRewardTokenBalance = contractNewRewardBalance
+
+    // Withdraw funds
+    await stakerContract.withdraw(depositAmount, { from: accounts[1] })
+    prevUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+
+    // Check user deposit balance
+    let userNewDepositBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
+    assert.equal(
+      userNewDepositBalance.toString(),
+      prevUserDepositTokenBalance.toString(),
+      'Wrong user deposit token balance after withdraw',
+    )
+    prevUserDepositTokenBalance = userNewDepositBalance
+
+    // Advance 15 days
+    secsToAdvance = 60 * 60 * 24 * 15
+    await timeMachine.advanceTimeAndBlock(secsToAdvance)
+
+    // Try to claim rewards
+    await stakerContract.claim({ from: accounts[1] })
+    userNewRewardBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    assert.equal(
+      userNewRewardBalance.toString(),
+      prevUserRewardTokenBalance.toString(),
+      'User received rewards even tho he withdrew all stake previously',
+    )
+
+    // User deposit funds
+    await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
+    await stakerContract.deposit(depositAmount, { from: accounts[1] })
+
+    // Advance time by 7 days
+    secsToAdvance = 60 * 60 * 24 * 7
+    await timeMachine.advanceTimeAndBlock(secsToAdvance)
+
+    // Add new rewards
+    let newRewardAmount = web3.utils.toWei('10')
+    let newDays = 6
+    await rewardToken.approve(stakerContract.address, newRewardAmount, defaultOptions)
+    await stakerContract.addRewards(newRewardAmount, newDays, defaultOptions)
+
+    // Advance time by 3 days
+    let newSecsToAdvance = 60 * 60 * 24 * 3
+    await timeMachine.advanceTimeAndBlock(newSecsToAdvance)
+
+    // Get contract rewards per second
+    let newContractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
+
+    // Make sure reward calculation is correct in pendingRewards() view function
+    let expectedTotalReward = contractRps
+      .mul(new BN(60 * 60 * 24 * 5))
+      .div(rpsMultiplierBN)
+      .add(newContractRps.mul(new BN(newSecsToAdvance)).div(rpsMultiplierBN))
+    contractPendingReward = await stakerContract.pendingRewards.call(accounts[1], { from: accounts[1] })
+    assertEqualWithMargin(
+      contractPendingReward,
+      expectedTotalReward,
+      contractRps.add(newContractRps).div(rpsMultiplierBN),
+      'Wrong pending rewards (view) calculation after adding new campaign',
+    )
+
+    // Store initial LP and reward balance
+    prevUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    prevUserDepositTokenBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
+
+    // Withdraw LP and rewards
+    let withdrawAmount = new BN(depositAmount).div(new BN(2))
+    await stakerContract.withdraw(withdrawAmount.toString(), { from: accounts[1] })
+
+    // Store final LP and reward balance
+    let newUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
+    let newUserDepositTokenBalance = await depositToken.balanceOf(accounts[1], { from: accounts[1] })
+
+    // Verify that LP and reward balances are correct
+    assertEqualWithMargin(
+      newUserDepositTokenBalance,
+      prevUserDepositTokenBalance.add(withdrawAmount),
+      contractRps.add(newContractRps).div(rpsMultiplierBN),
+      'After withdraw(), wrong deposit token balance',
+    )
+    assertEqualWithMargin(
+      newUserRewardTokenBalance,
+      prevUserRewardTokenBalance.add(expectedTotalReward),
+      contractRps.add(newContractRps).div(rpsMultiplierBN),
+      'After withdraw(), wrong reward token balance',
+    )
+  })
 })
