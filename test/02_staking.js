@@ -30,23 +30,32 @@ contract('staker', async (accounts) => {
   }
 
   beforeEach(async () => {
+    // Deploy the factory contract
     const factoryContract = await ERC20Factory.new()
 
+    // Deploy the reward and LP token
     await factoryContract.createToken('LP BT-BNB', 'LPToken') // Deposit token
     await factoryContract.createToken('Basic Token', 'BT') // Reward token
     const [depositTokenAddr, rewardTokenAddr] = await factoryContract.getTokens()
+
+    // Mock the reward and LP token
     depositToken = await MockERC20.at(depositTokenAddr)
     rewardToken = await MockERC20.at(rewardTokenAddr)
+
+    // Give LP token some initial balance to be staked
     await depositToken.mint(accounts[1], web3.utils.toWei('1000000'))
     await depositToken.mint(accounts[2], web3.utils.toWei('1000000'))
 
+    // Deploy the staker contract
     stakerContract = await Staker.new(depositTokenAddr, rewardTokenAddr)
 
+    // Make a snapshot of the blockchain
     let snapshot = await timeMachine.takeSnapshot()
     snapshotId = snapshot['result']
   })
 
   afterEach(async () => {
+    // Revert the blockchain to the previous snapshot
     await timeMachine.revertToSnapshot(snapshotId)
   })
 
@@ -54,9 +63,8 @@ contract('staker', async (accounts) => {
     let rewardAmount = web3.utils.toWei('300')
     let days = 30
 
-    await rewardToken.approve(stakerContract.address, rewardAmount)
-
     // Add staking rewards
+    await rewardToken.approve(stakerContract.address, rewardAmount)
     await stakerContract.addRewards(rewardAmount, days)
     let startingTime = await getTime()
 
@@ -72,25 +80,28 @@ contract('staker', async (accounts) => {
   })
 
   it('allows to deposit', async () => {
+    // Deposit LP tokens into the staker contract
     const depositAmount = web3.utils.toWei('10')
     await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
     await stakerContract.deposit(depositAmount, { from: accounts[1] })
 
+    // Verify the staker contract balance is correct
     const userDetails = await stakerContract.users(accounts[1])
-
     assert.equal(userDetails[0].toString(), depositAmount, 'Wrong deposit amount')
   })
 
   it('allows to withdraw', async () => {
+    // Deposit LP tokens into the staker contract
     const depositAmount = web3.utils.toWei('10')
-    const withdrawAmount = web3.utils.toWei('5')
-
     await depositToken.approve(stakerContract.address, depositAmount, { from: accounts[1] })
     await stakerContract.deposit(depositAmount, { from: accounts[1] })
+
+    // Withdraw LP tokens from the staker contract
+    const withdrawAmount = web3.utils.toWei('5')
     await stakerContract.withdraw(withdrawAmount, { from: accounts[1] })
 
+    // Verify the staker contract balance is correct
     const userDetails = await stakerContract.users(accounts[1])
-
     assert.equal(userDetails[0].toString(), web3.utils.toWei('5'), 'Wrong deposit amount')
   })
 
@@ -102,13 +113,13 @@ contract('staker', async (accounts) => {
     await rewardToken.approve(stakerContract.address, rewardAmount, defaultOptions)
     await stakerContract.addRewards(rewardAmount, days, defaultOptions)
 
+    // Verify the rewards per second are correct
     const contractRps = await stakerContract.rewardPerSecond.call(defaultOptions)
     const expectedReward = await new BN(rewardAmount).mul(rpsMultiplierBN).div(new BN(days)).div(secondsInDayBN)
-
     assert.equal(contractRps.toString(), expectedReward.toString(), 'Wrong rewards per second')
   })
 
-  it.only('allows to claim rewards', async () => {
+  it('allows to claim rewards', async () => {
     const rewardAmount = web3.utils.toWei('300')
     const days = 30
 
