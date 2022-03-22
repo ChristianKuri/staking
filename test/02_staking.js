@@ -214,12 +214,6 @@ contract('staker', async (accounts) => {
       'Wrong amount of rewards sent to user after claim()',
     )
 
-    // Check contract rewards balance *
-    const contractNewRewardBalance = await rewardToken.balanceOf(stakerContract.address, { from: accounts[1] })
-    const contractDelta = prevContractRewardTokenBalance.sub(contractNewRewardBalance)
-    assert.equal(contractDelta.toString(), expectedPendingReward.toString(), 'Contract lost different amount of rewards than should have')
-    prevContractRewardTokenBalance = contractNewRewardBalance
-
     // Withdraw funds
     await stakerContract.withdraw(depositAmount, { from: accounts[1] })
     prevUserRewardTokenBalance = await rewardToken.balanceOf(accounts[1], { from: accounts[1] })
